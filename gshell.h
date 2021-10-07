@@ -3,7 +3,7 @@
  * A small terminal and console logging library with small features added over the years.
  * Initialy designed for the Atmel AVR microcontrollers (in particular the larger xmega series),
  * it slowly has been adopted to target other and more generic microcontrollers as well (tested
- * on the STM32L1x, GD32VF103x and ESP32)
+ * on the STM32L1x, GD32VF103x, SAMD21G18J and ESP32)
  *
  * Todo:
  * - Add file and line to the logging output (__FILE__ __LINE__)
