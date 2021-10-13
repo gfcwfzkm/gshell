@@ -5,7 +5,7 @@
  *  Author: gfcwfzkm
  */ 
 
-#include "gshell.h"
+#include "./gshell.h"
 
 /* Let the Preprocessor deal with language. Change the stuff here to your desired language */
 #define _G_UNKCMD	"Unknown command: "
