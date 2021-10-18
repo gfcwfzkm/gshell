@@ -1,4 +1,5 @@
-/* gfcwfzkm's generic shell for embedded systems
+/**
+ * gfcwfzkm's generic shell for embedded systems
  *
  * A small terminal and console logging library with small features added over the years.
  * Initialy designed for the Atmel AVR microcontrollers (in particular the larger xmega series),
