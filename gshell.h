@@ -1,5 +1,4 @@
-/**
- * gfcwfzkm's generic shell for embedded systems
+/* gfcwfzkm's generic shell for embedded systems
  *
  * A small terminal and console logging library with small features added over the years.
  * Initialy designed for the Atmel AVR microcontrollers (in particular the larger xmega series),
@@ -41,7 +40,7 @@
 							// 2 times G_RX_BUFSIZE on AVR systems
 #define G_MAX_ARGS		16	// Amount of pointers to strings that are passed to your command function
 							// as *argv[]
-
+#define G_ENABLE_STATIC_SHELL	// Uncomment or comment it to toggle this feature
 
 #define G_ESCAPE		"\x1b["
 #define G_TEXTNORMAL	G_ESCAPE"0m"
@@ -98,9 +97,10 @@ enum glog_level{
  * const gshell_cmd_t *const gshell_list_commands = shell_command_list;
  * const uint8_t gshell_list_num_commands = sizeof(shell_command_list) / sizeof(shell_command_list[0]);
  */
+#ifdef G_ENABLE_STATIC_SHELL
 extern const gshell_cmd_t *const gshell_list_commands;
 extern const uint8_t gshell_list_num_commands;
-
+#endif 
 /* gshell_init
  * 
  * Initialise the console's internal variables and passes over the function to send
