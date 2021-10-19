@@ -62,15 +62,23 @@
 #define C_WITESPCE		' '
 #define C_NULLCHAR		'\0'
 
-/* Definition for each valid command */
+/**
+ * @brief command structure
+ * 
+ * Structure containing the command's name, a pointer to the function as well as a basic description.
+ */
 typedef struct gshell_cmd {
-	const _GMEMX char *cmdName;					// name of the command to look for
-	void (*handler)(uint8_t argc, char *argv[]);// function pointer to the command
-	const _GMEMX char *desc;					// Simple description of the command
-	struct gshell_cmd *next;	// Don't assign this yourself - used for dynamic commands via gshell_register_cmd
+	const _GMEMX char *cmdName;						/**< String - command name (case sensitive) */
+	void (*handler)(uint8_t argc, char *argv[]);	/**< function pointer to the command's funciton */
+	const _GMEMX char *desc;						/**< String - basic, short description of the command */
+	struct gshell_cmd *next;	/**< Don't assign this yourself! Used in the dynamic command list, pointing to the next command */
 } gshell_cmd_t;
 
-/* Log levels for gs_log_f */
+/**
+ * @brief logging level
+ * 
+ * Basic logging levels, highlighted by different colours and texts
+ */
 enum glog_level{
 	GLOG_NORMAL	= 0,
 	GLOG_INFO	= 1,
@@ -101,11 +109,16 @@ enum glog_level{
 extern const gshell_cmd_t *const gshell_list_commands;
 extern const uint8_t gshell_list_num_commands;
 #endif 
-/* gshell_init
+/**
+ * @brief Initialise the shell
  * 
  * Initialise the console's internal variables and passes over the function to send
  * a character and to get a millisecond-timestamp for the logging functions.
- * If no millisecond-timestamp is wished, replace it with 'NULL' instead. */
+ * If no millisecond-timestamp is wished, replace it with 'NULL' instead.
+ * 
+ * @param putchar			Function pointer to print a character
+ * @param get_msTimeStamp	Function pointer to get the milliseconds timestamp as uint32_t
+ */
 void gshell_init(void (*put_char)(char), uint32_t (*get_msTimeStamp)(void));
 
 /* gshell_register_cmd
