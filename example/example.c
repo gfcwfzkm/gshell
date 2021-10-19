@@ -30,7 +30,6 @@ BUF_UART_t uartHnd;
 uint8_t receiveBuf[UART_BUF_SIZE];
 uint8_t transmitBuf[UART_BUF_SIZE];
 
-
 void mcu_init(void);		// Initialise the peripherals of the MCU
 void processShell(void);	// Check for new characters and run the shell
 void putCharacter(char ch);	// Print a character

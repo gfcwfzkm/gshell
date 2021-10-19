@@ -93,7 +93,7 @@ enum glog_level{
  *	 {G_XARR("hello"),	cli_cmd_hello,	G_XARR("Say Hello")}
  * // Simply add more commands here
  * };
- *
+ * 
  * const gshell_cmd_t *const gshell_list_commands = shell_command_list;
  * const uint8_t gshell_list_num_commands = sizeof(shell_command_list) / sizeof(shell_command_list[0]);
  */
