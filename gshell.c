@@ -196,6 +196,7 @@ uint8_t gshell_register_cmd(gshell_cmd_t *cmd)
 	else
 	{
 		g_shell.lastChain->next = cmd;
+        g_shell.lastChain = cmd;
 		g_shell.chain_len++;
 	}
 	return g_shell.chain_len;
