@@ -232,7 +232,7 @@ void gshell_setPromt(uint8_t promtStatus)
 
 uint8_t gshell_CharReceived(char c)
 {
-	if (c == C_CARRET)
+	if ((c == C_CARRET) || (c == '\0'))
 	{
 		return 0;
 	}
