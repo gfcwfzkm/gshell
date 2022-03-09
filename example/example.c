@@ -10,7 +10,7 @@
  * For the classic XMEGAs: https://github.com/gfcwfzkm/xmegaUSART
  * For the GD32VF103: https://github.com/gfcwfzkm/gfc32vf103_uart
  */
-
+#ifdef DEMO_CODE
 #ifdef AVR
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -89,3 +89,4 @@ void processShell()
         gshell_CharReceived((char)data);
     }
 }
+#endif
