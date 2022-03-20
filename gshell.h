@@ -36,11 +36,13 @@
 	#define G_XARR(X)		( ( const _GMEMX char[] ) { X } )
 #endif
 
+/* (Un)comment this line if you want to disable/enable static commands */
+//#define ENABLE_STATIC_COMMANDS	1
+
 #define G_RX_BUFSIZE	120	// also used as temporary buffer size in vsprintf for AVR, making it 
 							// 2 times G_RX_BUFSIZE on AVR systems
 #define G_MAX_ARGS		16	// Amount of pointers to strings that are passed to your command function
 							// as *argv[]
-#define G_ENABLE_STATIC_SHELL	// Uncomment or comment it to toggle this feature
 
 #define G_ESCAPE		"\x1b["
 #define G_TEXTNORMAL	G_ESCAPE"0m"
@@ -105,7 +107,7 @@ enum glog_level{
  * const gshell_cmd_t *const gshell_list_commands = shell_command_list;
  * const uint8_t gshell_list_num_commands = sizeof(shell_command_list) / sizeof(shell_command_list[0]);
  */
-#ifdef G_ENABLE_STATIC_SHELL
+#ifdef ENABLE_STATIC_COMMANDS
 extern const gshell_cmd_t *const gshell_list_commands;
 extern const uint8_t gshell_list_num_commands;
 #endif 
