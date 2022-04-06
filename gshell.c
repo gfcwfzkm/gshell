@@ -431,7 +431,7 @@ void gshell_log_flash(enum glog_level loglvl, const _GMEMX char *format, ...)
 	if (g_shell.get_msTimeStamp != NULL)
 	{
 		timestamp = g_shell.get_msTimeStamp();
-		gshell_printf_flash(G_XSTR("[%09d] "), timestamp);
+		gshell_printf_flash(G_XSTR("[%09"PRIu32"] "), timestamp);
 	}
 
 #ifdef AVR
