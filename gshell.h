@@ -37,7 +37,7 @@
 #endif
 
 /* (Un)comment this line if you want to disable/enable static commands */
-//#define ENABLE_STATIC_COMMANDS	1
+#define ENABLE_STATIC_COMMANDS	1
 
 #define G_RX_BUFSIZE	120	// also used as temporary buffer size in vsprintf for AVR, making it 
 							// 2 times G_RX_BUFSIZE on AVR systems

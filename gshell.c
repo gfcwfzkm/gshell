@@ -103,7 +103,7 @@ static const gshell_cmd_t *_gshellFindCmd(const char *name)
 			return command;
 		}
 	}
-#ifdef G_ENABLE_STATIC_SHELL
+#ifdef ENABLE_STATIC_COMMANDS
 	/* Then check the command list */
 	for (uint8_t i = 0; i < gshell_list_num_commands; i++)
 	{
@@ -286,7 +286,7 @@ void gshell_cmd_help(uint8_t argc, char *argv[])
 		if (tempLen > longestDescription)	longestDescription = tempLen;
 		
 	}
-#ifdef G_ENABLE_STATIC_SHELL
+#ifdef ENABLE_STATIC_COMMANDS
 	for (u8_cnt = 0; u8_cnt < gshell_list_num_commands; u8_cnt++)
 	{
 		command = &gshell_list_commands[u8_cnt];
@@ -328,7 +328,7 @@ void gshell_cmd_help(uint8_t argc, char *argv[])
 			gshell_putString_f(G_TEXTNORMAL":"G_CRLF);
 		}
 	}
-#ifdef G_ENABLE_STATIC_SHELL
+#ifdef ENABLE_STATIC_COMMANDS
 	for (u8_cnt = 0; u8_cnt < gshell_list_num_commands; u8_cnt++)
 	{
 		command = &gshell_list_commands[u8_cnt];
