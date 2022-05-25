@@ -3,11 +3,10 @@
  * A small terminal and console logging library with small features added over the years.
  * Initialy designed for the Atmel AVR microcontrollers (in particular the larger xmega series),
  * it slowly has been adopted to target other and more generic microcontrollers as well (tested
- * on the STM32L1x, GD32VF103x, SAMD21G18J and ESP32)
+ * on the STM32L1x, GD32VF103x, SAMD21G18J and ATxmega32A4U).
  *
  * Todo:
  * - Add file and line to the logging output (__FILE__ __LINE__)
- * - Add alternative timestamps (HH:MM:SS for example)
  *
  * Created: 18.03.2020 07:08:46
  *  Author: gfcwfzkm
@@ -21,25 +20,31 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef AVR
+#if defined(AVR) && !defined(__GNUG__)
 	#include <avr/pgmspace.h>
 	#define _GMEMX	__memx
+	#define _PRGMX 
+#elif defined(AVR) && defined(__GNUG__)
+	#include <avr/pgmspace.h>
+	#define _GMEMX
+	#define _PRGMX PROGMEM
 #else
 	#define _GMEMX
+	#define _PRGMX
 #endif
 
 #ifndef G_XSTR
-	#define G_XSTR(s)	(__extension__({static _GMEMX const char __fc[] = (s); &__fc[0];}))
+	#define G_XSTR(s)	(__extension__({static _GMEMX const char __fc[] _PRGMX = (s); &__fc[0];}))
 #endif
 
 #ifndef G_XARR
-	#define G_XARR(X)		( ( const _GMEMX char[] ) { X } )
+	#define G_XARR(X)		( ( const _GMEMX char[] _PRGMX ) { X } )
 #endif
 
 /* (Un)comment this line if you want to disable/enable static commands */
-#define ENABLE_STATIC_COMMANDS	1
+//#define ENABLE_STATIC_COMMANDS
 
-#define G_RX_BUFSIZE	120	// also used as temporary buffer size in vsprintf for AVR, making it 
+#define G_RX_BUFSIZE	120	// also used as buffer size in vsprintf for AVR, making it 
 							// 2 times G_RX_BUFSIZE on AVR systems
 #define G_MAX_ARGS		16	// Amount of pointers to strings that are passed to your command function
 							// as *argv[]
@@ -175,6 +180,8 @@ void gshell_printf_flash(const _GMEMX char *progmem_s, ...);
  * variables can be printed similar like printf. Expects a const string pointer (to
  * flash for AVR devices) */
 void gshell_log_flash(enum glog_level loglvl, const _GMEMX char *format, ...);
-#define gs_log_f(__l,__f,...)	gshell_log_flash(__l,G_XSTR(__f), ##__VA_ARGS__)
+#define glog_f(__l,__f,...)		gshell_log_flash(__l,G_XSTR(__f), ##__VA_ARGS__)
+#define glog_lf(__l,__f,...)	gshell_log_flash(__l,G_XSTR(__FILE__":"__LINE__"-"__f), ##__VA_ARGS__)
+
 
 #endif // GSHELL_H_
