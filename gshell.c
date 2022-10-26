@@ -1,18 +1,30 @@
-/*
- * gshell.c
- *
- * Created: 18.03.2020 07:08:46
- *  Author: gfcwfzkm
- */ 
+/**
+ * @file gshell.c
+ * @brief gshell C file
+ * @author gfcwfzkm
+ * @version 2.0
+ */
 
 #include "./gshell.h"
 
-/* Let the Preprocessor deal with language. Change the stuff here to your desired language */
+/* Strings used by the library are defined here */
 #define _G_UNKCMD	"Unknown command: "
 #define _G_HLPCMD	G_CRLF"Type 'help' to list all available commands"G_CRLF
 #define _G_HLPDESC	"Lists all available commands"
-#define G_PROMT			G_CRLF G_TEXTBOLD"gshell> "G_TEXTNORMAL
+#define _G_PROMT			G_CRLF G_TEXTBOLD"gshell> "G_TEXTNORMAL
 
+/* For weird terminals that send \r instead of \n at enter-keypresses */
+#ifdef G_CR_INSTEADOF_LF
+#define _G_ENT_IGNORE	'\n'
+#define _G_STR_PROCESS	" \r"
+#define _G_ENT_PROCESS	'\r'
+#else
+#define _G_ENT_IGNORE	'\r'
+#define _G_STR_PROCESS	" \n"
+#define _G_ENT_PROCESS	'\n'
+#endif
+
+/* String-Functions for strings stored in flash memory */
 #ifdef AVR
 	#define _G_STRNLEN(key,length)		strnlen_PF((__uint24)(key),length)
 	#define _G_STRNCMP(str,key,length)	strncmp_PF(str,(__uint24)(key),length)
@@ -21,24 +33,29 @@
 	#define _G_STRNCMP(str,key,length)	strncmp(str,key,length)
 #endif
 
+#define _G_MAXCMD	127	// Maximum of 127 commands allowed!
+
+/* Internal Variable Structure */
 static struct {
-    void (*put_char)(char);
-	uint32_t (*get_msTimeStamp)(void);
-	uint8_t chain_len;
-	gshell_cmd_t *lastChain;
-    uint8_t rx_index;
-    char rx_buf[G_RX_BUFSIZE];
-    char vspr_buf[G_RX_BUFSIZE];
-	uint8_t argc;
-	char *argv[G_MAX_ARGS];
-    uint8_t isActive:1;
-    uint8_t promtStatus:1;
+	void (*fp_putChar)(char);			/**< Functionspointer to send a char */
+	uint32_t (*fp_msTimeStamp)(void);	/**< Functionspointer to get the milliseconds tick */
+	uint8_t chain_len;					/**< length of the command struct chain */
+	gshell_cmd_t *lastChain;			/**< Dynamic Command Chain, pointer to the last registered command */
+	uint8_t rx_index;					/**< Receive Buffer Index */
+	char rx_buf[G_RX_BUFSIZE];			/**< Receive Buffer, G_RX_BUFSIZE Bytes */
+	char vsprintf_buf[G_RX_BUFSIZE];	/**< vsprintf buffer used in gshell_printf and glog functions */
+	uint8_t isActive:1;					/**< Enable the whole shell, including any basic printing or reading */
+	uint8_t promtEnabled:1;				/**< Enable the shell promt, controls input processing by the user */
+	uint8_t helpCmdDescLength;			/**< Optimizing of the help function for faster yet nicer screen output */
+	uint8_t helpCmdNameLength;			/**< Optimizing of the help function for faster yet nicer screen output */
 #ifdef AVR
 	char tempBuf[G_RX_BUFSIZE];
 #endif
-} g_shell = {0};
+} sInternals = {0};
 
-void gshell_cmd_help(uint8_t argc, char *argv[]);
+
+/* Internal 'help' command, to list all other commands */
+static uint8_t gshell_cmd_help(uint8_t argc, char *argv[]);
 static gshell_cmd_t cmd_help = {
 	G_XARR("help"),
 	gshell_cmd_help,
@@ -46,26 +63,31 @@ static gshell_cmd_t cmd_help = {
 	NULL
 };
 
-
+/* Logging Texts with additonal formatting, stored in the program flash */
 static const _GMEMX char * const _GMEMX console_levels[6] =
 {
-	G_XARR("[      ] "),
-	G_XARR("["G_TEXTBOLD" INFO "G_TEXTNORMAL"] "),
-	G_XARR("["G_TEXTBOLD G_COLORGREEN"  OK  "G_COLORRESET G_TEXTNORMAL"] "),
-	G_XARR("["G_TEXTBOLD G_COLORYELLOW" WARN "G_COLORRESET G_TEXTNORMAL"] "),
-	G_XARR("["G_TEXTBOLD G_COLORRED"ERROR"G_COLORRESET G_TEXTNORMAL"] "),
-	G_XARR("["G_TEXTBOLD G_TEXTBLINK G_COLORRED"PANIC!"G_COLORRESET G_TEXTNORMAL"] ")
+	G_XARR("[      ] "),																/**< GLOG_NORMAL */
+	G_XARR("["G_TEXTBOLD" INFO "G_TEXTNORMAL"] "),										/**< GLOG_INFO */
+	G_XARR("["G_TEXTBOLD G_COLORGREEN"  OK  "G_COLORRESET G_TEXTNORMAL"] "),			/**< GLOG_OK */
+	G_XARR("["G_TEXTBOLD G_COLORYELLOW" WARN "G_COLORRESET G_TEXTNORMAL"] "),			/**< GLOG_WARN */
+	G_XARR("["G_TEXTBOLD G_COLORRED"ERROR!"G_COLORRESET G_TEXTNORMAL"] "),				/**< GLOG_ERROR */
+	G_XARR("["G_TEXTBOLD G_TEXTBLINK G_COLORRED"PANIC!"G_COLORRESET G_TEXTNORMAL"] ")	/**< GLOG_FATAL */
 };
 
+/* Echoes back to the terminal / serial port
+ * Filters out certain special characters
+ * Can be disabled via the define G_ENABLE_ECHO */
 static void _gshell_echo(char c)
 {
-	if (C_NEWLINE == c)
+#ifdef G_ENABLE_ECHO
+
+	if (C_NEWLINE == c) // Echoing newline?
 	{
 		// Add carriage return to newline
 		gshell_putChar(C_CARRET);
 		gshell_putChar(C_NEWLINE);
 	}
-	else if ((c == C_BACKSPCE1) || (c == C_BACKSPCE2))
+	else if ((c == C_BACKSPCE1) || (c == C_BACKSPCE2)) // Echoing backspace?
 	{
 		// remove previous character on screen
 		gshell_putChar(C_BACKSPCE1);
@@ -76,17 +98,251 @@ static void _gshell_echo(char c)
 	{
 		gshell_putChar(c);
 	}
+#else
+	// Supress compiler warning
+	(void)(c);
+#endif
 }
 
-static const gshell_cmd_t *_gshellFindCmd(const char *name)
+/* Find the right gshell_cmd_t command structure, which name
+ * matches the name passed over to this function. Also returns the ID
+ * of said command if found!
+ *
+ * If no command has been found, it returns a null-pointer and pi8CmdID with -1 */
+static const gshell_cmd_t *_gshellFindCmd(const char *name, int8_t *pi8CmdID)
 {
 	const gshell_cmd_t *command;
 	uint8_t u8_cnt;
 	
 	/* First check the linked chain
-	 * The first entry in the chain is always the help command, the last entry
-	 * being g_shell.lastChain. With that the chain can be quickly checked.     */
-	for (u8_cnt = 0; u8_cnt < g_shell.chain_len; u8_cnt++)
+	 * The first entry in the chain are always the internal commands, the
+	 * last entry being sInternals.lastChain. With that the chain can be
+	 * quicklychecked.
+	*/
+	for (u8_cnt = 0; u8_cnt < sInternals.chain_len; u8_cnt++)
+	{
+		// First entry always is cmd_help, from there follow the chain
+		if (u8_cnt)
+		{
+			command = command->next;
+		}
+		else
+		{
+			command = &cmd_help;
+		}
+		// Check if 'name' matches the command struct's name
+		if (_G_STRNCMP(name, command->cmdName, G_RX_BUFSIZE) == 0)
+		{
+			*pi8CmdID = u8_cnt;	// Command-ID
+			return command;		// Pointer to Command Structure
+		}
+	}
+
+	*pi8CmdID = u8_cnt;
+#ifdef ENABLE_STATIC_COMMANDS
+	/* Then check the command list */
+	for (u8_cnt = 0; u8_cnt < gshell_list_num_commands; u8_cnt++)
+	{
+		command = &gshell_list_commands[u8_cnt];
+		// Similar as before, search the name in the command struct list
+		// and return it's ID and pointer when found
+		if (_G_STRNCMP(name, command->cmdName, G_RX_BUFSIZE) == 0)
+		{
+			*pu8CmdCnt += u8_cnt;
+			return command;
+		}
+	}
+#endif 
+
+	/* None of the commands matched? Return a NULL-pointer and
+	 * the invalid command ID '-1'! */
+	*pi8CmdID = -1;
+	return NULL;
+}
+
+/* Processes the complete string, inputted by the user
+ * Splits the string by spaces and searches for a matching command,
+ * before calling it and passing over the arguments in a standard-c-style fashion.
+ * If the command returns a value, it too is processed and returned back
+ * for the user to handle the command's return value.
+ *
+ * Lower 8-bits is the enum 'gshell_return', upper 8-bits for the command return value. */
+static int16_t _gshell_process()
+{
+	enum gshell_return eGshellPrc = GSHELL_OK;	// Function Status uppon exit
+	uint8_t argc = 0;			// Classic C-Style argc to fill in
+	char *argv[G_MAX_ARGS];		// Classic C-Style argv to fill in
+	uint16_t u8CmdRet = 0;		// Return Value of the command
+	int8_t i8CmdID = 0;			// ID of the command
+
+	// No newline, no command to process!
+	if (sInternals.rx_buf[sInternals.rx_index - 1] != _G_ENT_PROCESS)
+	{
+		return GSHELL_OK;
+	}
+
+	// Todo: Handle quotes in the string splits
+	//		https://stackoverflow.com/questions/28931379/implementation-of-strtok-function
+	//      https://stackoverflow.com/questions/26187037/in-c-split-char-on-spaces-with-strtok-function-except-if-between-quotes
+
+	// Split by spaces into seperate strings, store the pointers in argv (command + arguments)
+	// and increase argc
+	char *pch = strtok(sInternals.rx_buf, _G_STR_PROCESS);
+    while (pch != NULL)
+	{
+		if (argc < G_MAX_ARGS)
+		{
+			argv[argc++] = pch;
+			pch = strtok(NULL, _G_STR_PROCESS);
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	// Just making sure we have actually found *any* argument
+	if (argc >= 1)
+	{
+		// Actual text has been received! Time to find the fitting command to it, else
+		// print the error
+		const gshell_cmd_t *command = _gshellFindCmd(argv[0], &i8CmdID);
+		if (!command)
+		{
+			// command not found, return error
+			gshell_putString(_G_UNKCMD);
+			gshell_putStringRAM(argv[0]);
+			gshell_putString(_G_HLPCMD);
+			eGshellPrc = GSHELL_CMDINV;
+		}
+		else
+		{
+			// Command found, calling the function pointer with the command line arguments
+			if (command->handler != NULL)
+			{
+				u8CmdRet = command->handler(argc, argv);
+			}
+		}
+	}
+	else
+	{
+		// User probably just spammed the enter key
+		gshell_putString(_G_HLPCMD);
+		eGshellPrc = GSHELL_RUBBISH;
+	}
+
+	/* Resetting the input buffer */
+	memset(sInternals.rx_buf, 0, G_RX_BUFSIZE);
+	sInternals.rx_index = 0;
+
+	// If the shell promt is enabled, reprint it (showing the user that we're ready
+	// for new commands)
+	if (sInternals.promtEnabled)
+	{
+		gshell_putString(_G_PROMT);
+	}
+
+	// If the called command returned a value, return it on the upper half of the word,
+	// and the command's ID on the lower half.
+	if (u8CmdRet)
+	{
+		return (u8CmdRet << 8) | (GSHELL_CMDRET | i8CmdID);
+	}
+	else
+	{
+		return eGshellPrc;
+	}
+}
+
+int8_t gshell_init(void (*put_char)(char), uint32_t (*get_msTimeStamp)(void))
+{
+	// Storing function pointers in the internal variable structure
+	sInternals.fp_putChar = put_char;
+	sInternals.fp_msTimeStamp = get_msTimeStamp;
+
+	// Terminal turned on by default, prompt turned off by default
+	sInternals.isActive = 1;
+	
+#ifdef ENABLE_STATIC_COMMANDS
+	// Make sure not too many static commands have been added
+	if (gshell_list_num_commands == _G_MAXCMD)
+	{
+
+	}
+	else if (gshell_list_num_commands > _G_MAXCMD)
+	{
+		return -1;
+	}
+	else
+	{
+		gshell_register_cmd(&cmd_help);
+	}
+#else
+	// Register the default help command
+	gshell_register_cmd(&cmd_help);
+#endif
+	
+	// Resetting Input Buffer
+	memset(sInternals.rx_buf, 0, G_RX_BUFSIZE);
+
+	// New lines for good measure
+	gshell_putString(G_CRLF G_CRLF);
+
+	return 0;
+}
+
+int8_t gshell_register_cmd(gshell_cmd_t *cmd)
+{
+	// Check if max. amount of commands already have been reached
+	uint8_t u8CheckCmdCnt = sInternals.chain_len;
+#ifdef ENABLE_STATIC_COMMANDS
+	u8CheckCmdCnd += gshell_list_num_commands;
+#endif
+	if (u8CheckCmdCnt >= _G_MAXCMD)
+	{
+		return -1;
+	}
+
+	// Check if the lastChain variable as been assigned -> set it in as first entry!
+	if (sInternals.lastChain == NULL)
+	{
+		sInternals.lastChain = cmd;
+		sInternals.chain_len++;
+	}
+	else
+	{
+		// If not, rebuild and extend the command chain, and increase the chain length counter
+		sInternals.lastChain->next = cmd;
+		sInternals.lastChain = cmd;
+		sInternals.chain_len++;
+	}
+
+	// Help function needs to rebuild the "spaces" length for nice formatting
+	sInternals.helpCmdDescLength = 0;
+	sInternals.helpCmdNameLength = 0;
+
+	// Return the length of the command chain
+	return sInternals.chain_len - 1;
+}
+
+// Returns the command ID from the string, returns -1 if it hasn't been found
+int8_t gshell_getCmdIDbyName(const char* cmd_name)
+{
+	int8_t cmdID = 0;
+	_gshellFindCmd(cmd_name, &cmdID);
+	return cmdID;
+}
+
+// Returns the command ID from the command structure pointer, returns -1 if it hasn't been found
+int8_t gshell_getCmdIDbyStruct(gshell_cmd_t *cmd)
+{
+	int8_t cmdID;
+	uint8_t u8_cnt;
+	const gshell_cmd_t *command;
+
+	// Similar as _gshellFindCmd, but comparing the pointer addresses instead of the
+	// command's name
+	for (u8_cnt = 0; u8_cnt < sInternals.chain_len; u8_cnt++)
 	{
 		/* First entry always is cmd_help, from there follow the chain */
 		if (u8_cnt)
@@ -98,119 +354,43 @@ static const gshell_cmd_t *_gshellFindCmd(const char *name)
 			command = &cmd_help;
 		}
 
-		if (_G_STRNCMP(name, command->cmdName, G_RX_BUFSIZE) == 0)
+		if (command == cmd)	// Just compare the pointer addresses against eachother
 		{
-			return command;
+			return (int8_t)u8_cnt;
 		}
 	}
+
+	cmdID = u8_cnt;
 #ifdef ENABLE_STATIC_COMMANDS
 	/* Then check the command list */
-	for (uint8_t i = 0; i < gshell_list_num_commands; i++)
+	for (u8_cnt = 0; u8_cnt < gshell_list_num_commands; u8_cnt++)
 	{
-		command = &gshell_list_commands[i];
-		if (_G_STRNCMP(name, command->cmdName, G_RX_BUFSIZE) == 0)
+		command = &gshell_list_commands[u8_cnt];
+		if (command == cmd)	// Just compare the pointer addresses against eachother
 		{
-			return command;
+			return (int8_t)(u8_cnt + cmdID);
 		}
 	}
-#endif 
-	
-	return NULL;
-}
+#else
+	// Supress compiler warning
+	(void)(cmdID);
+#endif
 
-uint8_t _gshell_process()
-{
-	// No newline, no command to process!
-	if (g_shell.rx_buf[g_shell.rx_index - 1] != C_NEWLINE)
-	{
-		return 0;
-	}
-	
-	g_shell.argc = 0;
-
-    char *pch = strtok(g_shell.rx_buf, " \n");
-    while (pch != NULL)
-	{
-		if (g_shell.argc < G_MAX_ARGS)
-		{
-			g_shell.argv[g_shell.argc++] = pch;
-			pch = strtok(NULL, " \n");
-		}
-		else
-		{
-			break;
-		}
-	}
-
-	if (g_shell.argc >= 1)
-	{
-		// Actual text has been received! Time to find the fitting command to it, else
-		// print the error
-		const gshell_cmd_t *command = _gshellFindCmd(g_shell.argv[0]);
-		if (!command)
-		{
-			gshell_putString_f(_G_UNKCMD);
-			gshell_putString(g_shell.argv[0]);
-			gshell_putString_f(_G_HLPCMD);
-		}
-		else
-		{
-			if (command->handler != NULL)	command->handler(g_shell.argc, g_shell.argv);
-		}
-	}
-	else
-	{
-		// User probably just spammed the enter key
-		gshell_putString_f(_G_HLPCMD);
-	}
-
-	/* Resetting Input Buffer */
-	memset(g_shell.rx_buf, 0, G_RX_BUFSIZE);
-	g_shell.rx_index = 0;
-
-	gshell_putString_f(G_PROMT);
-	return 0;
-}
-
-void gshell_init(void (*put_char)(char), uint32_t (*get_msTimeStamp)(void))
-{
-	g_shell.put_char = put_char;
-	g_shell.get_msTimeStamp = get_msTimeStamp;
-	g_shell.isActive = 1;
-	
-	gshell_register_cmd(&cmd_help);
-	
-	/* Resetting Input Buffer */
-	memset(g_shell.rx_buf, 0, G_RX_BUFSIZE);
-
-	gshell_putString_f(G_CRLF"\n");
-}
-
-uint8_t gshell_register_cmd(gshell_cmd_t *cmd)
-{
-	if ( (g_shell.lastChain == NULL) && (g_shell.chain_len == 0) )
-	{
-		g_shell.lastChain = cmd;
-		g_shell.chain_len++;
-	}
-	else
-	{
-		g_shell.lastChain->next = cmd;
-        g_shell.lastChain = cmd;
-		g_shell.chain_len++;
-	}
-	return g_shell.chain_len;
+	// If no ID has been returned by now, return -1
+	return -1;
 }
 
 void gshell_setActive(uint8_t activeStatus)
 {
+	// Set active means all activities are enabled...
 	if (activeStatus)
 	{
-		g_shell.isActive = 1;
+		sInternals.isActive = 1;
 	}
 	else
 	{
-		g_shell.isActive = 0;
+		//... or halted if disabled! No printing of any functions, input is ignored
+		sInternals.isActive = 0;
 	}
 }
 
@@ -218,176 +398,103 @@ void gshell_setPromt(uint8_t promtStatus)
 {
 	if (promtStatus)
 	{
-		if (g_shell.promtStatus == 0)
+		// Enabling the prompt? Check if it has already been enabled...
+		if (sInternals.promtEnabled == 0)
 		{
-			g_shell.promtStatus = 1;		
-			gshell_putString_f(G_PROMT);
+			// .. if no, print the prompt and enable it internally
+			sInternals.promtEnabled = 1;
+			gshell_putString(_G_PROMT);
 		}
 	}
 	else
 	{
-		g_shell.promtStatus = 0;
+		// If the promt was enabled before, erase it from the terminal screen
+		if (sInternals.promtEnabled)
+		{
+			gshell_putString(G_CLEARLINE);
+			gshell_putChar('\r');
+		}
+		sInternals.promtEnabled = 0;
 	}
 }
 
-uint8_t gshell_CharReceived(char c)
+uint16_t gshell_processShell(char c)
 {
-	if ((c == C_CARRET) || (c == '\0'))
+	// Main function to process each incoming character!
+	// CR/LF or \0 is ignored
+	if ((c == _G_ENT_IGNORE) || (c == '\0'))
 	{
-		return 0;
+		return GSHELL_OK;
 	}
-	else if (g_shell.isActive == 0)
+	else if (sInternals.isActive == 0)
 	{
-		return 3;
+		// If the shell isn't even set active, avoid any further processing!
+		return GSHELL_INACTIVE;
 	}
 
 	if ((c == C_BACKSPCE1) || (c == C_BACKSPCE2))
 	{
-		if (g_shell.rx_index > 0)
+		// Interpreting backspace, removing the character from the input buffer
+		// and removing it also from the user's screen!
+
+		if (sInternals.rx_index > 0)
 		{
-			g_shell.rx_buf[--g_shell.rx_index] = C_NULLCHAR;
+			sInternals.rx_buf[--sInternals.rx_index] = C_NULLCHAR;
 			_gshell_echo(c);
 		}
-		return 0;
+		return GSHELL_OK;
 	}
-	else if (g_shell.rx_index >= G_RX_BUFSIZE)
+	else if (sInternals.rx_index >= G_RX_BUFSIZE)
 	{
-		return 2;
+		// Input buffer full? Stop processing and inform the user!
+		return GSHELL_BUFFULL;
 	}
 
+	// Echo the (valid) character back to the terminal/user
+#ifdef G_CR_INSTEADOF_LF
+	// Some terminals send a CR instead of LF, handle things here-
+	if (c == _G_ENT_PROCESS)
+	{
+		_gshell_echo(_G_ENT_IGNORE);
+	}
+	else
+	{
+		_gshell_echo(c);
+	}
+#else
 	_gshell_echo(c);
-	g_shell.rx_buf[g_shell.rx_index++] = c;
-	return _gshell_process();
-}
-
-void gshell_cmd_help(uint8_t argc, char *argv[])
-{
-	const gshell_cmd_t *command;
-	uint8_t longestCommand = 0;
-	uint8_t longestDescription = 0;
-	uint8_t tempLen;
-	uint8_t u8_cnt;
-	
-	for (u8_cnt = 0; u8_cnt < g_shell.chain_len; u8_cnt++)
-	{
-		if (u8_cnt)
-		{
-			command = command->next;
-		}
-		else
-		{
-			command = &cmd_help;
-		}
-
-		tempLen = _G_STRNLEN(command->cmdName, G_RX_BUFSIZE);
-		if (tempLen > longestCommand)	longestCommand = tempLen;
-		
-		tempLen = _G_STRNLEN(command->desc, G_RX_BUFSIZE);
-		if (tempLen > longestDescription)	longestDescription = tempLen;
-		
-	}
-#ifdef ENABLE_STATIC_COMMANDS
-	for (u8_cnt = 0; u8_cnt < gshell_list_num_commands; u8_cnt++)
-	{
-		command = &gshell_list_commands[u8_cnt];
-		tempLen = _G_STRNLEN(command->cmdName, G_RX_BUFSIZE);
-		if (tempLen > longestCommand)	longestCommand = tempLen;
-		
-		tempLen = _G_STRNLEN(command->desc, G_RX_BUFSIZE);
-		if (tempLen > longestDescription)	longestDescription = tempLen;
-	}
-#endif 
-	for (u8_cnt = 0; u8_cnt < g_shell.chain_len; u8_cnt++)
-	{
-		if (u8_cnt)
-		{
-			command = command->next;
-		}
-		else
-		{
-			command = &cmd_help;
-		}
-		
-		if (2+longestDescription+longestCommand >= G_RX_BUFSIZE)
-		{
-			gshell_putString_f("\r"G_TEXTBOLD);
-			gshell_putString_flash(command->cmdName);
-			gshell_putString_f(G_TEXTNORMAL":"G_CRLF"     ");
-			gshell_putString_flash(command->desc);
-			gshell_putString_f(G_CRLF);
-		}
-		else
-		{
-			for (uint8_t j = 0; j < (longestCommand+2); j++)
-			{
-				gshell_putChar(' ');
-			}
-			gshell_putString_flash(command->desc);
-			gshell_putString_f("\r"G_TEXTBOLD);
-			gshell_putString_flash(command->cmdName);
-			gshell_putString_f(G_TEXTNORMAL":"G_CRLF);
-		}
-	}
-#ifdef ENABLE_STATIC_COMMANDS
-	for (u8_cnt = 0; u8_cnt < gshell_list_num_commands; u8_cnt++)
-	{
-		command = &gshell_list_commands[u8_cnt];
-		if (2+longestDescription+longestCommand >= G_RX_BUFSIZE)
-		{
-			gshell_putString_f("\r"G_TEXTBOLD);
-			gshell_putString_flash(command->cmdName);
-			gshell_putString_f(G_TEXTNORMAL":"G_CRLF"     ");
-			gshell_putString_flash(command->desc);
-			gshell_putString_f(G_CRLF);
-		}
-		else
-		{
-			for (uint8_t j = 0; j < (longestCommand+2); j++)
-			{
-				gshell_putChar(' ');
-			}
-			gshell_putString_flash(command->desc);
-			gshell_putString_f("\r"G_TEXTBOLD);
-			gshell_putString_flash(command->cmdName);
-			gshell_putString_f(G_TEXTNORMAL":"G_CRLF);	
-		}
-	}
 #endif
+
+	// Storing the received character, increading index
+	sInternals.rx_buf[sInternals.rx_index++] = c;
+
+	// Call the main processing function, return it's return-value
+	return _gshell_process();
 }
 
 void gshell_putChar(char c)
 {
-	if (g_shell.isActive == 0)	return;
-	g_shell.put_char(c);
+	// If shell is not inactive, print character
+	if (sInternals.isActive == 0)	return;
+	sInternals.fp_putChar(c);
 }
 
-void gshell_putString(const char *str)
+void gshell_putStringRAM(const char *str)
 {
-	if (g_shell.isActive == 0)	return;
+	// If shell is not inactive, print string
+	if (sInternals.isActive == 0)	return;
 	while (*str)
 	{
 		gshell_putChar(*str++);
 	}
 }
 
-void gshell_printf(const char *str, ...)
-{
-	va_list args;
-	
-	if (g_shell.isActive == 0)	return;
-	
-	va_start(args, str);
-	vsprintf(g_shell.vspr_buf, str, args);
-	va_end(args);
-
-	gshell_putString(g_shell.vspr_buf);
-}
-
 void gshell_putString_flash(const _GMEMX char *progmem_s)
 {
 	char character;
 
-	if (g_shell.isActive == 0)	return;
+	// If shell is not inactive, print string from program memory
+	if (sInternals.isActive == 0)	return;
 
 	while ( (character = *progmem_s++) )
 	{
@@ -398,62 +505,202 @@ void gshell_putString_flash(const _GMEMX char *progmem_s)
 void gshell_printf_flash(const _GMEMX char *progmem_s, ...)
 {
 	va_list args;
-
-	if (g_shell.isActive == 0)	return;
+	// If shell is not inactive, return directly back
+	if (sInternals.isActive == 0)	return;
 	
+	// Printf with the main string stored in the program memory! First get the argument list
 	va_start(args, progmem_s);
 #ifdef AVR
-	strncpy_PF(g_shell.tempBuf, (__uint24)progmem_s, G_RX_BUFSIZE);
-	vsprintf(g_shell.vspr_buf, g_shell.tempBuf, args);
+	// Copy the program-memory string into the SRAM memory, store it in the
+	// additional vsprintf buffer for further processing
+	// Handle printf-processing via vsprintf
+	strncpy_PF(sInternals.tempBuf, (__uint24)progmem_s, G_RX_BUFSIZE);
+	vsprintf(sInternals.vsprintf_buf, sInternals.tempBuf, args);
 #else
-	vsprintf(g_shell.vspr_buf, progmem_s, args);
+	// Handle printf-processing via vsprintf
+	vsprintf(sInternals.vsprintf_buf, progmem_s, args);
 #endif
-	
 	va_end(args);
 	
-	gshell_putString(g_shell.vspr_buf);
+	// Print the result of vsprintf back to the user
+	gshell_putStringRAM(sInternals.vsprintf_buf);
 }
 
-void gshell_log_flash(enum glog_level loglvl, const _GMEMX char *format, ...)
+void gshell_log_flash(enum glog_level loglvl, const _GMEMX char *logText, ...)
 {
 	va_list args;
 	uint32_t timestamp = 0;
 
-	if (g_shell.isActive == 0)	return;
-	if (g_shell.promtStatus)
+	// Shell not set active? Abort further processing!
+	if (sInternals.isActive == 0)	return;
+
+	// If the promt is enabled, it is likely also printed out -> erase it (and anything typed by the user)
+	if (sInternals.promtEnabled)
 	{
-        gshell_putString(G_CLEARLINE);
-        gshell_putChar('\r');
+		gshell_putStringRAM(G_CLEARLINE);
+		gshell_putChar(C_CARRET);
 	}
 	
+	// Print the logging level
 	gshell_putString_flash(console_levels[loglvl]);
 	
-	if (g_shell.get_msTimeStamp != NULL)
+	// If a timestamp function pointer has been given, call it to get the ms-Tick
+	if (sInternals.fp_msTimeStamp != NULL)
 	{
-		timestamp = g_shell.get_msTimeStamp();
-		gshell_printf_flash(G_XSTR("[%09"PRIu32"] "), timestamp);
+		// Print the msTick / Timestamp
+		timestamp = sInternals.fp_msTimeStamp();
+		gshell_printf_flash(G_XSTR("[%09u] "), timestamp);
 	}
 
+	// Similar "printf / vsprintf" processing as in gshell_printf_flash
 #ifdef AVR
-	strncpy_PF(g_shell.tempBuf, (__uint24)format, G_RX_BUFSIZE);
-	va_start(args, format);
-    vsprintf(g_shell.vspr_buf, g_shell.tempBuf, args);
+	strncpy_PF(sInternals.tempBuf, (__uint24)logText, G_RX_BUFSIZE);
+	va_start(args, logText);
+	vsprintf(sInternals.vsprintf_buf, sInternals.tempBuf, args);
     va_end(args);
 #else
-	va_start(args, format);
-	vsprintf(g_shell.vspr_buf, format, args);
+	va_start(args, logText);
+	vsprintf(sInternals.vsprintf_buf, logText, args);
 	va_end(args);
 #endif
 
-    gshell_putString(g_shell.vspr_buf);
+	// Print the result from vsprintf
+	gshell_putStringRAM(sInternals.vsprintf_buf);
 
-	if (g_shell.promtStatus)
+	if (sInternals.promtEnabled)
 	{
-		gshell_putString_f(G_PROMT);
-		gshell_putString(g_shell.rx_buf);
+		// If the promt was enabled before, reprint not only
+		// the prompt itself, but also what the user has typed in!
+		// Thus, restoring any command / typing flow of the user despite random logging
+		gshell_putString(_G_PROMT);
+		gshell_putStringRAM(sInternals.rx_buf);
 	}
 	else
 	{
-		gshell_putString_f(G_CRLF);
+		gshell_putString(G_CRLF);
 	}
+}
+
+/*****************************************************************************/
+/*****************   DEFAULT COMMANDS INCLUDED WITH GSHELL *******************/
+/*****************************************************************************/
+static uint8_t gshell_cmd_help(uint8_t argc, char *argv[])
+{
+	const gshell_cmd_t *command;
+
+	uint8_t longestCommand = sInternals.helpCmdNameLength;
+	uint8_t longestDescription = sInternals.helpCmdDescLength;
+	uint8_t tempLen = 0;
+	uint8_t u8_cnt;
+
+	// Supress 'unused parameter' warning:
+	(void)(argc);
+	(void)(argv);
+
+	// If we haven't found the longest command and description yet, find it
+	if ((longestCommand == 0) || (longestDescription == 0))
+	{
+		// Loop through every dynamic command!
+		for (u8_cnt = 0; u8_cnt < sInternals.chain_len; u8_cnt++)
+		{
+			if (u8_cnt)
+			{
+				command = command->next;
+			}
+			else
+			{
+				command = &cmd_help;
+			}
+
+			// Get the length of the command name and description!
+			//
+			tempLen = _G_STRNLEN(command->cmdName, G_RX_BUFSIZE);
+			if (tempLen > longestCommand)	longestCommand = tempLen;
+
+			tempLen = _G_STRNLEN(command->desc, G_RX_BUFSIZE);
+			if (tempLen > longestDescription)	longestDescription = tempLen;
+
+		}
+#ifdef ENABLE_STATIC_COMMANDS
+		for (u8_cnt = 0; u8_cnt < gshell_list_num_commands; u8_cnt++)
+		{
+			command = &gshell_list_commands[u8_cnt];
+			tempLen = _G_STRNLEN(command->cmdName, G_RX_BUFSIZE);
+			if (tempLen > longestCommand)	longestCommand = tempLen;
+
+			tempLen = _G_STRNLEN(command->desc, G_RX_BUFSIZE);
+			if (tempLen > longestDescription)	longestDescription = tempLen;
+		}
+#endif
+		sInternals.helpCmdDescLength = longestDescription;
+		sInternals.helpCmdNameLength = longestCommand;
+	}
+
+	// Print the command, followed by some spacing, and finally the description
+	// The amount of "spaces" between the command name and description is
+	// based on the longest command name.
+	for (u8_cnt = 0; u8_cnt < sInternals.chain_len; u8_cnt++)
+	{
+		// If u8Cnt is zero, start with the help command, otherwise with the dynamic command chain
+		if (u8_cnt)
+		{
+			command = command->next;
+		}
+		else
+		{
+			command = &cmd_help;
+		}
+
+		// Some boundary checks in order to print long descriptions nicely:
+		if (2+longestDescription+longestCommand >= G_RX_BUFSIZE)
+		{
+			gshell_putString("\r"G_TEXTBOLD);
+			gshell_putString_flash(command->cmdName);
+			gshell_putString(G_TEXTNORMAL":"G_CRLF"     ");
+			gshell_putString_flash(command->desc);
+			gshell_putString(G_CRLF);
+		}
+		else
+		{
+			// Command name + description not too large?
+			// Print the spaces, then the description, then use
+			// CR to return back to the start to print the command name
+			// Go to the next line (LF) and repeat as long a there are commands
+			for (uint8_t j = 0; j < (longestCommand+2); j++)
+			{
+				gshell_putChar(' ');
+			}
+			gshell_putString_flash(command->desc);
+			gshell_putString("\r"G_TEXTBOLD);
+			gshell_putString_flash(command->cmdName);
+			gshell_putString(G_TEXTNORMAL":"G_CRLF);
+		}
+	}
+#ifdef ENABLE_STATIC_COMMANDS
+	// Same as with the dynamic commands above!
+	for (u8_cnt = 0; u8_cnt < gshell_list_num_commands; u8_cnt++)
+	{
+		command = &gshell_list_commands[u8_cnt];
+		if (2+longestDescription+longestCommand >= G_RX_BUFSIZE)
+		{
+			gshell_putString("\r"G_TEXTBOLD);
+			gshell_putString_flash(command->cmdName);
+			gshell_putString(G_TEXTNORMAL":"G_CRLF"     ");
+			gshell_putString_flash(command->desc);
+			gshell_putString(G_CRLF);
+		}
+		else
+		{
+			for (uint8_t j = 0; j < (longestCommand+2); j++)
+			{
+				gshell_putChar(' ');
+			}
+			gshell_putString_flash(command->desc);
+			gshell_putString("\r"G_TEXTBOLD);
+			gshell_putString_flash(command->cmdName);
+			gshell_putString(G_TEXTNORMAL":"G_CRLF);
+		}
+	}
+#endif
+	return 0;
 }

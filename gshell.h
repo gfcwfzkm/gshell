@@ -1,54 +1,94 @@
-/* gfcwfzkm's generic shell for embedded systems
+/**
+ * @mainpage GSHELL - generic shell for embedded systems
  *
- * A small terminal and console logging library with small features added over the years.
+ * A small terminal and console logging library with small features added over the years.\n
  * Initialy designed for the Atmel AVR microcontrollers (in particular the larger xmega series),
- * it slowly has been adopted to target other and more generic microcontrollers as well (tested
- * on the STM32L1x, GD32VF103x, SAMD21G18J and ATxmega32A4U).
+ * it slowly has been adopted to target other and more generic microcontrollers (STM32L1x,
+ * GD32VF103x, SAMD21G18J and ATxmega32A4U) and on the computer. (Created 18.03.2020) \n
+ * Written by gfcwfzkm (github.com/gfcwfzkm, gfcwfzkm@protonmail.com)
  *
- * Todo:
- * - Add file and line to the logging output (__FILE__ __LINE__)
+ * \version 2.0
+ * -Rework of the library, proper documentation
  *
- * Created: 18.03.2020 07:08:46
- *  Author: gfcwfzkm
- */ 
-
+ * \file gshell.h
+ * \author gfcwfzkm
+ * \date 08.10.2022
+ * \copyright GNU Lesser General Public License v2.1
+ *
+ * \bug No known Bugs
+ * \todo Add quotation-marks-functionality to the string-splitting / arguments parser
+ */
+/**
+ * @file gshell.h
+ * @brief Header-File of gshell library
+ */
 #ifndef GSHELL_H_
 #define GSHELL_H_
 
+/* --Includes-- */
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <string.h>
 
-#if defined(AVR) && !defined(__GNUG__)
+
+/****** USER CONFIGURATION STARTS HERE ******/
+/**
+ * @brief Enable static shell commands
+ */
+//#define ENABLE_STATIC_COMMANDS
+
+/**
+ * @brief Enable (/ Disable) echoing of the input back to the output
+ */
+#define G_ENABLE_ECHO
+
+/**
+ * @brief Use CR instead of LF to detect a new-line/enter keypress
+ */
+//#define G_CR_INSTEADOF_LF
+
+/**
+ * @brief Receive Buffer, also defines a AVR temporary buffer size
+ */
+#define G_RX_BUFSIZE	120
+
+/**
+ * @brief Amount of max. pointers passed as *argv[]
+ */
+#define G_MAX_ARGS		16
+/****** USER CONFIGURATION ENDS HERE ******/
+
+
+/* If on a 8-bit AVR Microcontroller, store text data in flash memory */
+#if defined(AVR) && !defined(__GNUG__)	// AVR + C Compiler (GCC)
 	#include <avr/pgmspace.h>
 	#define _GMEMX	__memx
-	#define _PRGMX 
-#elif defined(AVR) && defined(__GNUG__)
+	#define _PRGMX
+#elif defined(AVR) && defined(__GNUG__)	// AVR + C++ Compiler (G++ workaround)
 	#include <avr/pgmspace.h>
 	#define _GMEMX
 	#define _PRGMX PROGMEM
-#else
+#else	// Non-AVR Platform
 	#define _GMEMX
 	#define _PRGMX
 #endif
 
 #ifndef G_XSTR
+	/**
+	 * @brief Store string (text array) in program memory and return a pointer from it
+	 */
 	#define G_XSTR(s)	(__extension__({static _GMEMX const char __fc[] _PRGMX = (s); &__fc[0];}))
 #endif
 
 #ifndef G_XARR
+	/**
+	 * @brief Store a Array in program memory
+	 */
 	#define G_XARR(X)		( ( const _GMEMX char[] _PRGMX ) { X } )
 #endif
 
-/* (Un)comment this line if you want to disable/enable static commands */
-//#define ENABLE_STATIC_COMMANDS
-
-#define G_RX_BUFSIZE	120	// also used as buffer size in vsprintf for AVR, making it 
-							// 2 times G_RX_BUFSIZE on AVR systems
-#define G_MAX_ARGS		16	// Amount of pointers to strings that are passed to your command function
-							// as *argv[]
-
+/* ANSI ESCAPE SEQUENCES */
 #define G_ESCAPE		"\x1b["
 #define G_TEXTNORMAL	G_ESCAPE"0m"
 #define G_TEXTBOLD		G_ESCAPE"1m"
@@ -61,6 +101,7 @@
 #define G_COLORGREEN	G_ESCAPE"32m"
 #define G_COLORYELLOW	G_ESCAPE"33m"
 
+/* General Terminal Sequences */
 #define G_CRLF			"\r\n"
 #define C_NEWLINE		'\n'
 #define C_CARRET		'\r'
@@ -70,13 +111,13 @@
 #define C_NULLCHAR		'\0'
 
 /**
- * @brief command structure
+ * @brief Shell command structure
  * 
  * Structure containing the command's name, a pointer to the function as well as a basic description.
  */
 typedef struct gshell_cmd {
 	const _GMEMX char *cmdName;						/**< String - command name (case sensitive) */
-	void (*handler)(uint8_t argc, char *argv[]);	/**< function pointer to the command's funciton */
+	uint8_t (*handler)(uint8_t argc, char *argv[]);	/**< function pointer to the command's funciton */
 	const _GMEMX char *desc;						/**< String - basic, short description of the command */
 	struct gshell_cmd *next;	/**< Don't assign this yourself! Used in the dynamic command list, pointing to the next command */
 } gshell_cmd_t;
@@ -84,15 +125,32 @@ typedef struct gshell_cmd {
 /**
  * @brief logging level
  * 
- * Basic logging levels, highlighted by different colours and texts
+ * Basic logging levels, highlighted by different colours and formats
  */
 enum glog_level{
-	GLOG_NORMAL	= 0,
-	GLOG_INFO	= 1,
-	GLOG_OK		= 2,
-	GLOG_WARN	= 3,
-	GLOG_ERROR	= 4,
-	GLOG_FATAL	= 5
+	GLOG_NORMAL	= 0,	/**< No Text, normal color */
+	GLOG_INFO	= 1,	/**< 'INFO' Text, normal color */
+	GLOG_OK		= 2,	/**< 'OK' Text, green color */
+	GLOG_WARN	= 3,	/**< 'WARN' text, yellow color */
+	GLOG_ERROR	= 4,	/**< 'ERROR' text, red color */
+	GLOG_FATAL	= 5		/**< 'FATAL' text, red and blink */
+};
+
+
+#define GSHELL_CMDRET_MASK      0x7F
+#define GSHELL_CMDRET_VAL(x)    (uint8_t)(x >> 8)
+/**
+ * @brief gshell-return status
+ *
+ * Information about buffer status or cmd function returns
+ */
+enum gshell_return{
+	GSHELL_OK		= 0,	/**< Everything okay, nothing to report */
+	GSHELL_INACTIVE,		/**< gshell inactive, character inputs ignored */
+	GSHELL_BUFFULL,			/**< text input buffer full! */
+	GSHELL_RUBBISH,			/**< Unrecognised data/command, discarded */
+	GSHELL_CMDINV,			/**< Unrecognised command / command not found */
+	GSHELL_CMDRET	= 0x80	/**< Command returned Value, lower 7-bits contain command ID */
 };
 
 /* Static command list. Use as followed in a seperate file (eg. 'commands.c':
@@ -116,6 +174,8 @@ enum glog_level{
 extern const gshell_cmd_t *const gshell_list_commands;
 extern const uint8_t gshell_list_num_commands;
 #endif 
+
+
 /**
  * @brief Initialise the shell
  * 
@@ -126,62 +186,152 @@ extern const uint8_t gshell_list_num_commands;
  * @param putchar			Function pointer to print a character
  * @param get_msTimeStamp	Function pointer to get the milliseconds timestamp as uint32_t
  */
-void gshell_init(void (*put_char)(char), uint32_t (*get_msTimeStamp)(void));
+int8_t gshell_init(void (*put_char)(char), uint32_t (*get_msTimeStamp)(void));
 
-/* gshell_register_cmd
+/**
+ * @brief Register a command
  * 
  * Register a console command yourself by passing over the pointer of your
- * gshell_cmd_t command definition. */
-uint8_t gshell_register_cmd(gshell_cmd_t *cmd);
+ * gshell_cmd_t command definition.
+ *
+ * @param cmd	Pointer to a initialised gshell_cmd_t struct
+ * @return		Returns the amount of registered commands. If the value
+ *				is negative, the command couldn't be added.
+ */
+int8_t gshell_register_cmd(gshell_cmd_t *cmd);
 
-/* Enables or disables the whole terminal & logging functions */
+/**
+ * @brief Returns the ID of a command
+ *
+ * Searches the internal command list for the command name passed
+ * over to this function and returns the corresponding command ID
+ * when it's found, otherwise returns -1
+ *
+ * @param cmd_name	Name of the command
+ * @return			-1 if not found, non-negative ID otherwise
+ */
+int8_t gshell_getCmdIDbyName(const char* cmd_name);
+
+/**
+ * @brief Returns the ID of a command
+ *
+ * Searches the internal command list for the matching command
+ * structure passed over to this function. Returns the command
+ * ID when it's found, otherwise returns -1
+ *
+ * @param cmd		Pointer to the gshell_cmd_t command
+ * @return			-1 if not found, non-negative ID otherwise
+ */
+int8_t gshell_getCmdIDbyStruct(gshell_cmd_t *cmd);
+
+/**
+ * @brief Set Shell Active
+ *
+ * Enables or disables the whole terminal and logging functionality
+ * Enabled by default when initialising gshell (\a gshell_init )
+ *
+ * @param activeStatus	0 to disable, non-zero to enable the terminal
+ */
 void gshell_setActive(uint8_t activeStatus);
 
-/* Enables or disables console input */
+/**
+ * @brief Enable or disable the promt
+ *
+ * Enables or disables the console promt and text input
+ *
+ * @param promtStatus	0 to disable, non-zero to enable the promt
+ */
 void gshell_setPromt(uint8_t promtStatus);
 
-/* gshell_CharReceived
+/**
+ * @brief Character-received Callback Function
  *
- * Called by the user when a character has been received so the shell can proces
- * the character. */
-uint8_t gshell_CharReceived(char c);
+ * Call this function with every character received by your system/peripheral or
+ * driver to let gshell process the user data input
+ *
+ * @param c		8-bit Character received via UART/Terminal/etc...
+ * @return		Lower 8-bit contain the enum gshell_return, upper 8-bit the
+ *				return value of the executed command
+ */
+uint16_t gshell_processShell(char c);
 
-/* gshell_putChar
+/**
+ * @brief Prints a single character
  *
- * Directy calls the put_char function of the initialise function.
- * if the Terminal is not set active, no characters will be printed */
+ * Prints a single character, passes the character directly
+ * to the driver function passed over during initialisation.
+ * If the terminal isn't set 'active', nothing will be printed.
+ *
+ * @param c		8-bit Character to send
+ */
 void gshell_putChar(char c);
 
-/* gshell_putString
- * 
- * Sends a whole string up to the null character out.
- * Won't send anything if the shell isn't set active */
-void gshell_putString(const char *str);
-
-/* gshell_printf
+/**
+ * @brief Sends a (S)RAM string
  *
- * Basic printf functionality using the vsprintf function */
-void gshell_printf(const char *str, ...);
+ * Sends a string stored in volatile RAM/Memory.
+ * If the terminal isn't set 'active', nothing will be printed.
+ *
+ * @param str	Pointer to array of characters, NULL-Character at the end
+ */
+void gshell_putStringRAM(const char *str);
 
-/* Similar as gshell_putString but contents are expected to be in flash memory.
- * Use the gshell_putString_f macro to directly place the string into flash memory */
+/**
+ * @brief Sends a flash string
+ *
+ * Sends a string stored in non-volatile flash memory. Use the macro
+ * \a gshell_putString to automatically mark the text within there as
+ * progmem. Otherwise use the \a G_XSTR macro.
+ * If the terminal isn't set 'active', nothing will be printed.
+ *
+ * @param progmem_s	Pointer to the program memory holding the flash string
+ */
 void gshell_putString_flash(const _GMEMX char *progmem_s);
-#define gshell_putString_f(__f)	gshell_putString_flash(G_XSTR(__f))
+#define gshell_putString(__f)	gshell_putString_flash(G_XSTR(__f))
 
-/* Similar as gshell_printf but contents are expected to be in flash memory.
- * Use the gshell_printf_f macro to directly place the string into flash memory */
+/**
+ * @brief Printf-functionality from program memory
+ *
+ * Basic (vs)printf functionality, where the main string is
+ * stored in flash memory instead of RAM. Requires the string to be
+ * put in the program memory if the macro \a gshell_printf isn't used.
+ * If the terminal isn't set 'active', nothing will be printed.
+ *
+ * @param progmem_s	Pointer to the program memory holding the flash string
+ */
 void gshell_printf_flash(const _GMEMX char *progmem_s, ...);
-#define gshell_printf_f(__f, ...)	gshell_printf_flash(G_XSTR(__f),__VA_ARGS__);
+#define gshell_printf(__f, ...)	gshell_printf_flash(G_XSTR(__f),__VA_ARGS__);
 
-/* gshell_log_flash
+/**
+ * @brief Logging functionality
  *
  * Basic logging function that prints out the text together with the logging level
  * and optionally a milliseconds timestamp. Uses vsprintf, so additonal arguments and
  * variables can be printed similar like printf. Expects a const string pointer (to
- * flash for AVR devices) */
-void gshell_log_flash(enum glog_level loglvl, const _GMEMX char *format, ...);
-#define glog_f(__l,__f,...)		gshell_log_flash(__l,G_XSTR(__f), ##__VA_ARGS__)
-#define glog_lf(__l,__f,...)	gshell_log_flash(__l,G_XSTR(__FILE__":"__LINE__"-"__f), ##__VA_ARGS__)
+ * flash for AVR devices).
+ *
+ * @param loglvl	glog_level logging level
+ * @param logText	Logging text with printf-functionality
+ */
+void gshell_log_flash(enum glog_level loglvl, const _GMEMX char *logText, ...);
+#define glog(__l,__f,...)		gshell_log_flash(__l,G_XSTR(__f), ##__VA_ARGS__)
+#define glog_norm(__f,...)		gshell_log_flash(GLOG_NORMAL,G_XSTR(__f), ##__VA_ARGS__)
+#define glog_info(__f,...)		gshell_log_flash(GLOG_INFO,G_XSTR(__f), ##__VA_ARGS__)
+#define glog_ok(__f,...)		gshell_log_flash(GLOG_OK,G_XSTR(__f), ##__VA_ARGS__)
+#define glog_warn(__f,...)		gshell_log_flash(GLOG_WARN,G_XSTR(__f), ##__VA_ARGS__)
+#define glog_error(__f,...)		gshell_log_flash(GLOG_ERROR,G_XSTR(__f), ##__VA_ARGS__)
+#define glog_fatal(__f,...)		gshell_log_flash(GLOG_FATAL,G_XSTR(__f), ##__VA_ARGS__)
+
+/**
+ * @brief Logging file/function/line
+ *
+ * Prints the exact file, function and line via the logging function.
+ * Expects a logging level.
+ *
+ * @param __l	glog_level logging level
+ */
+#define glog_ffl(__l)			gshell_log_flash(__l, G_XSTR("In ["__FILE__"], function [%s] line [%d]"), __FUNCTION__, __LINE__)
+
 
 
 #endif // GSHELL_H_
