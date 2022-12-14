@@ -7,6 +7,9 @@
  * GD32VF103x, SAMD21G18J and ATxmega32A4U) and on the computer. (Created 18.03.2020) \n
  * Written by gfcwfzkm (github.com/gfcwfzkm, gfcwfzkm@protonmail.com)
  *
+ * \version 2.1
+ * -Quotation-Marks detection and processing added (see \a G_ENABLE_SPECIALCMDSTR )
+ *
  * \version 2.0
  * -Rework of the library, proper documentation
  *
@@ -16,7 +19,9 @@
  * \copyright GNU Lesser General Public License v2.1
  *
  * \bug No known Bugs
- * \todo Add quotation-marks-functionality to the string-splitting / arguments parser
+ * \todo
+ * - Add quotation-marks-functionality to the string-splitting / arguments parser
+ * - Add basic cursor handling to the processShell-function
  */
 /**
  * @file gshell.h
@@ -49,7 +54,7 @@
 //#define G_CR_INSTEADOF_LF
 
 /**
- * @brief Receive Buffer, also defines a AVR temporary buffer size
+ * @brief Receive Buffer, also defines a AVR temporary buffer size (2x on AVR)
  */
 #define G_RX_BUFSIZE	120
 
@@ -57,6 +62,14 @@
  * @brief Amount of max. pointers passed as *argv[]
  */
 #define G_MAX_ARGS		16
+
+/**
+ * @brief Enables specialised command string processing
+ *
+ * Allows ' and " characters to be used in order to not split
+ * by spaces.
+ */
+#define G_ENABLE_SPECIALCMDSTR
 /****** USER CONFIGURATION ENDS HERE ******/
 
 
@@ -88,18 +101,26 @@
 	#define G_XARR(X)		( ( const _GMEMX char[] _PRGMX ) { X } )
 #endif
 
-/* ANSI ESCAPE SEQUENCES */
+/* ANSI ESCAPE SEQUENCES TEXT FORMATTING */
 #define G_ESCAPE		"\x1b["
 #define G_TEXTNORMAL	G_ESCAPE"0m"
 #define G_TEXTBOLD		G_ESCAPE"1m"
-#define G_TEXTUNDERL	G_ESCAPE"4m"
+#define G_TEXTUNDERLINE	G_ESCAPE"4m"
 #define G_TEXTBLINK		G_ESCAPE"5m"
-#define G_TEXTREVERSE	G_ESCAPE"7m"
+#define G_TEXTNEGATIVE	G_ESCAPE"7m"
 #define G_CLEARLINE		G_ESCAPE"2K"
-#define G_COLORRESET	G_ESCAPE"0m"
+/* ANSI ESCAPE SEQUENCES TEXT COLOR */
+#define G_COLORRESET	G_ESCAPE"39m"
 #define G_COLORRED		G_ESCAPE"31m"
 #define G_COLORGREEN	G_ESCAPE"32m"
 #define G_COLORYELLOW	G_ESCAPE"33m"
+#define G_COLORBLUE		G_ESCAPE"34m"
+#define G_COLORMAGENTA	G_ESCAPE"35m"
+#define G_COLORCYAN		G_ESCAPE"36m"
+#define G_COLORWHITE	G_ESCAPE"37m"
+#define G_COLORCUSTOM(r,g,b) \
+		G_ESCAPE"38m;2;"r";"g";"b
+
 
 /* General Terminal Sequences */
 #define G_CRLF			"\r\n"
@@ -150,6 +171,7 @@ enum gshell_return{
 	GSHELL_BUFFULL,			/**< text input buffer full! */
 	GSHELL_RUBBISH,			/**< Unrecognised data/command, discarded */
 	GSHELL_CMDINV,			/**< Unrecognised command / command not found */
+	GSHELL_ESCSEQ,			/**< Is processing a ANSI Escape Sequence */
 	GSHELL_CMDRET	= 0x80	/**< Command returned Value, lower 7-bits contain command ID */
 };
 

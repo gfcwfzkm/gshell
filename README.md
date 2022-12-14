@@ -11,7 +11,7 @@ Basic uart shell for embedded systems. While it has been initially developed for
  - Nicely printed shell logging
  - Ease of use to add additional commands
  - Supports both static command lists or dynamically added commands
-
+ - Handles Quotation-Marks to pass larger arguments to the commands
 ## Usage
 In order to use the library, simply initialise `gs_init` with a function pointer to a printCharacter-function. Optionally you can also pass over a millisecond-timestamp/tick function, in order to add timelogging capabilities on the logging functions.
 

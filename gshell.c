@@ -17,12 +17,17 @@
 #ifdef G_CR_INSTEADOF_LF
 #define _G_ENT_IGNORE	'\n'
 #define _G_STR_PROCESS	" \r"
+#define _G_STR_COMPSLIT	"\"'"
 #define _G_ENT_PROCESS	'\r'
 #else
 #define _G_ENT_IGNORE	'\r'
 #define _G_STR_PROCESS	" \n"
+#define _G_STR_COMPSLIT	"\"'"
 #define _G_ENT_PROCESS	'\n'
 #endif
+
+/* Escape Sequence Buffer Length */
+#define ESCSEQ_BUFLEN	8
 
 /* String-Functions for strings stored in flash memory */
 #ifdef AVR
@@ -54,7 +59,8 @@ static struct {
 } sInternals = {0};
 
 
-/* Internal 'help' command, to list all other commands */
+/* Internal 'help' command, to list all other commands
+ * It is also the head/first element of the command list */
 static uint8_t gshell_cmd_help(uint8_t argc, char *argv[]);
 static gshell_cmd_t cmd_help = {
 	G_XARR("help"),
@@ -160,6 +166,117 @@ static const gshell_cmd_t *_gshellFindCmd(const char *name, int8_t *pi8CmdID)
 	return NULL;
 }
 
+/* Checks if a character contains any character inside the string.
+ * If yes, it returns that, otherwise it returns zero */
+static char _gshell_CharCmpStr(const char cInput, const char *strCheck)
+{
+	while(*strCheck != '\0')
+	{
+		if (cInput != *strCheck)
+		{
+			strCheck++;
+		}
+		else
+		{
+			return *strCheck;
+		}
+	}
+	return 0;
+}
+
+/* strtok replacement to support additional, special arguments
+ *
+ * In order to support string splitting with " or ' characters, a
+ * extended strtok function has been coded. It behaves similarly as the
+ * original function from string.h, but takes an additional string parameter.
+ *
+ * Otherwise arguments and return pointers are the same and it should
+ * behave the same too.
+ */
+static char *_gshell_strtok(char *strInput, const char *delim, const char *special)
+{
+	static char *strProcess = NULL;	// Process string pointer
+	char *strStart = NULL;			// Start pointer of a string to split
+	static uint8_t bSpecialMode = 0;// Special Mode, enabled if a special character has been found
+
+	// New string passed over?
+	if (strInput != NULL)
+	{
+		strProcess = strInput;
+		bSpecialMode = 0;
+	}
+
+	// Process-String-Pointer empty?
+	if ((strProcess == NULL) || (*strProcess == '\0'))
+	{
+		return NULL;
+	}
+
+	// Work loop where the string is splitted
+	do
+	{
+		// Set the starting pointer to a valid character (non-delim or special)
+		if (strStart == NULL)
+		{
+			// Check if a normal split operation is detected
+			if ((bSpecialMode == 0) && _gshell_CharCmpStr(*strProcess, delim))
+			{
+				*strProcess = '\0';
+			}
+			// Check if a special split operation is detected
+			else if (_gshell_CharCmpStr(*strProcess, special))
+			{
+				*strProcess = '\0';
+
+				if (bSpecialMode)
+				{
+					bSpecialMode = 0;
+				}
+				else
+				{
+					bSpecialMode = 1;
+				}
+			}
+			else
+			{
+				// None of the other two? Character to set the start pointer on found!
+				strStart = strProcess;
+			}
+		}
+		else
+		{
+			// Check if a normal split operation is detected
+			if ((bSpecialMode == 0) && _gshell_CharCmpStr(*strProcess, delim))
+			{
+				*strProcess = '\0';
+				strProcess++;
+
+				return strStart;
+			}
+			// Check if a special split operation is detected
+			else if (_gshell_CharCmpStr(*strProcess, special))
+			{
+				*strProcess = '\0';
+				strProcess++;
+
+				if (bSpecialMode)
+				{
+					bSpecialMode = 0;
+				}
+				else
+				{
+					bSpecialMode = 1;
+				}
+				return strStart;
+			}
+		}
+	}
+	while(*++strProcess != '\0');
+	// Finish if the work-string-pointer reaches the end
+	// and return the last start pointer
+	return strStart;
+}
+
 /* Processes the complete string, inputted by the user
  * Splits the string by spaces and searches for a matching command,
  * before calling it and passing over the arguments in a standard-c-style fashion.
@@ -181,12 +298,24 @@ static int16_t _gshell_process()
 		return GSHELL_OK;
 	}
 
-	// Todo: Handle quotes in the string splits
-	//		https://stackoverflow.com/questions/28931379/implementation-of-strtok-function
-	//      https://stackoverflow.com/questions/26187037/in-c-split-char-on-spaces-with-strtok-function-except-if-between-quotes
-
 	// Split by spaces into seperate strings, store the pointers in argv (command + arguments)
 	// and increase argc
+#ifdef G_ENABLE_SPECIALCMDSTR
+	// Pay attention to special characters like " or ' and split accordingly
+	char *pch = _gshell_strtok(sInternals.rx_buf, _G_STR_PROCESS, _G_STR_COMPSLIT);
+	while (pch != NULL)
+	{
+		if (argc < G_MAX_ARGS)
+		{
+			argv[argc++] = pch;
+			pch = _gshell_strtok(NULL, _G_STR_PROCESS, _G_STR_COMPSLIT);
+		}
+		else
+		{
+			break;
+		}
+	}
+#else
 	char *pch = strtok(sInternals.rx_buf, _G_STR_PROCESS);
     while (pch != NULL)
 	{
@@ -200,6 +329,7 @@ static int16_t _gshell_process()
 			break;
 		}
 	}
+#endif
 
 	// Just making sure we have actually found *any* argument
 	if (argc >= 1)
@@ -418,8 +548,20 @@ void gshell_setPromt(uint8_t promtStatus)
 	}
 }
 
+/*** WIP WIP WIP - Do not enable G_ENABLE_INESCAPES - WIP WIP WIP ***/
+/**
+ * @brief Enables incoming Escape-Sequence Processing
+ */
+//#define G_ENABLE_INESCAPES
+
 uint16_t gshell_processShell(char c)
 {
+#ifdef G_ENABLE_INESCAPES
+	static uint8_t u8EscapeSequenceCnt = 0;
+	static char cEscapeSequenceBuf[ESCSEQ_BUFLEN];
+	int32_t i32EscapeSequenceValue= 0;
+#endif
+
 	// Main function to process each incoming character!
 	// CR/LF or \0 is ignored
 	if ((c == _G_ENT_IGNORE) || (c == '\0'))
@@ -432,6 +574,46 @@ uint16_t gshell_processShell(char c)
 		return GSHELL_INACTIVE;
 	}
 
+#ifdef G_ENABLE_INESCAPES
+	/* ANSI Escape Sequence check & processing */
+	if ((u8EscapeSequenceCnt) || (c == 0x1B))
+	{
+		if (u8EscapeSequenceCnt)
+		{
+			if ((u8EscapeSequenceCnt == 1) && (c == '['))
+			{
+				u8EscapeSequenceCnt = 2;
+			}
+			else
+			{
+				// Letter, number or something else received?
+				if (((c >=0x41) && (c <= 0x5A)) || ((c >= 0x61) && (c <= 0x7A)))
+				{
+					// Letter received! Finish sequence handling
+					// and process it.
+
+				}
+				else if ((c >= 0x30) && (c <= 0x39))
+				{
+					// Number received!
+
+				}
+				else
+				{
+					// Something else received!
+				}
+			}
+		}
+		else
+		{
+			u8EscapeSequenceCnt = 1;
+		}
+
+		return GSHELL_OK;
+	}
+#endif
+
+	/* Backspace handling */
 	if ((c == C_BACKSPCE1) || (c == C_BACKSPCE2))
 	{
 		// Interpreting backspace, removing the character from the input buffer
