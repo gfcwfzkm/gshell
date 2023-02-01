@@ -61,8 +61,8 @@ int main()
 	uint8_t u8AppRunning = 0;	// Keeps the while-loop running
 	uint16_t u16CmdRetVal;		// gshell return value
 	gshell_cmd_t gCmdArr[] = {	// gshell command structure, packed in an array
-		{"exit",	cli_cmd_exit,	"Beendet das Programm und geht zur Konsole zurueck", NULL},
-		{"test",	cli_cmd_test,	"Test Befehl", NULL},
+		{"exit",	cli_cmd_exit,	"Exits the program and returns to the computer's console", NULL},
+		{"test",	cli_cmd_test,	"Test command, prints back all arguments", NULL},
 	};
 
 	// Initialising gshell - passing over the function pointer to print a character,
