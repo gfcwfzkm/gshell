@@ -6,6 +6,9 @@
  * it slowly has been adopted to target other and more generic microcontrollers (STM32L1x,
  * GD32VF103x, SAMD21G18J and ATxmega32A4U) and on the computer. (Created 18.03.2020) \n
  * Written by gfcwfzkm (github.com/gfcwfzkm, gfcwfzkm@protonmail.com)
+ * 
+ * \version 2.2
+ * -Refined documentation, fixed minor bug
  *
  * \version 2.1
  * -Quotation-Marks detection and processing added (see \a G_ENABLE_SPECIALCMDSTR )
@@ -140,7 +143,7 @@ typedef struct gshell_cmd {
 	const _GMEMX char *cmdName;						/**< String - command name (case sensitive) */
 	uint8_t (*handler)(uint8_t argc, char *argv[]);	/**< function pointer to the command's funciton */
 	const _GMEMX char *desc;						/**< String - basic, short description of the command */
-	struct gshell_cmd *next;	/**< Don't assign this yourself! Used in the dynamic command list, pointing to the next command */
+	struct gshell_cmd *next;						/**< Don't assign this yourself! Used in dynamic command list */
 } gshell_cmd_t;
 
 /**
@@ -309,6 +312,15 @@ void gshell_putStringRAM(const char *str);
  * @param progmem_s	Pointer to the program memory holding the flash string
  */
 void gshell_putString_flash(const _GMEMX char *progmem_s);
+
+/**
+ * @brief Makro for \a gshell_putString_flash
+ * 
+ * Stores the text automatically via a macro in flash memory for
+ * the \a gshell_putString_flash function.
+ * 
+ * @param __f 	Text to send, automatically saved in flash
+ */
 #define gshell_putString(__f)	gshell_putString_flash(G_XSTR(__f))
 
 /**
@@ -320,8 +332,19 @@ void gshell_putString_flash(const _GMEMX char *progmem_s);
  * If the terminal isn't set 'active', nothing will be printed.
  *
  * @param progmem_s	Pointer to the program memory holding the flash string
+ * @param ...		Additional, optional printf-style arguments
  */
 void gshell_printf_flash(const _GMEMX char *progmem_s, ...);
+
+/**
+ * @brief Printf-functionality & auto-flash string saving
+ * 
+ * Similar as \a gshell_printf_f but stores the text automatically
+ * in the program memory.
+ * 
+ * @param __f		printf-formatting text to process
+ * @param ...		Additional, optional printf-style arguments
+ */
 #define gshell_printf(__f, ...)	gshell_printf_flash(G_XSTR(__f),__VA_ARGS__);
 
 /**
@@ -330,29 +353,110 @@ void gshell_printf_flash(const _GMEMX char *progmem_s, ...);
  * Basic logging function that prints out the text together with the logging level
  * and optionally a milliseconds timestamp. Uses vsprintf, so additonal arguments and
  * variables can be printed similar like printf. Expects a const string pointer (to
- * flash for AVR devices).
+ * flash memory).
  *
  * @param loglvl	glog_level logging level
- * @param logText	Logging text with printf-functionality
+ * @param logText	Program-memory-pointer to the logging text & printf-formatting 
+ * @param ...		Additional, optional printf-style arguments
  */
 void gshell_log_flash(enum glog_level loglvl, const _GMEMX char *logText, ...);
+
+/**
+ * @brief Logging macro
+ * 
+ * Basically \a gshell_log_flash but with a macro to store the (printf) text
+ * in the flash memory & passing the flash memory pointer to the function 
+ * \a gshell_log_flash.
+ * 
+ * @param __l		enum \a glog_level logging level
+ * @param logText	Logging text & printf-formatting 
+ * @param ...		Additional, optional printf-style arguments
+ */
 #define glog(__l,__f,...)		gshell_log_flash(__l,G_XSTR(__f), ##__VA_ARGS__)
+
+/**
+ * @brief Logging macro level NORMAL
+ * 
+ * Basically \a gshell_log_flash but with a macro to store the (printf) text
+ * in the flash memory & passing the flash memory pointer to the function 
+ * \a gshell_log_flash.
+ * 
+ * @param logText	Logging text & printf-formatting 
+ * @param ...		Additional, optional printf-style arguments
+ */
 #define glog_norm(__f,...)		gshell_log_flash(GLOG_NORMAL,G_XSTR(__f), ##__VA_ARGS__)
+
+/**
+ * @brief Logging macro level INFO
+ * 
+ * Basically \a gshell_log_flash but with a macro to store the (printf) text
+ * in the flash memory & passing the flash memory pointer to the function 
+ * \a gshell_log_flash.
+ * 
+ * @param logText	Logging text & printf-formatting 
+ * @param ...		Additional, optional printf-style arguments
+ */
 #define glog_info(__f,...)		gshell_log_flash(GLOG_INFO,G_XSTR(__f), ##__VA_ARGS__)
+
+/**
+ * @brief Logging macro level OK
+ * 
+ * Basically \a gshell_log_flash but with a macro to store the (printf) text
+ * in the flash memory & passing the flash memory pointer to the function 
+ * \a gshell_log_flash.
+ * 
+ * @param logText	Logging text & printf-formatting 
+ * @param ...		Additional, optional printf-style arguments
+ */
 #define glog_ok(__f,...)		gshell_log_flash(GLOG_OK,G_XSTR(__f), ##__VA_ARGS__)
+
+/**
+ * @brief Logging macro level WARNING
+ * 
+ * Basically \a gshell_log_flash but with a macro to store the (printf) text
+ * in the flash memory & passing the flash memory pointer to the function 
+ * \a gshell_log_flash.
+ * 
+ * @param logText	Logging text & printf-formatting 
+ * @param ...		Additional, optional printf-style arguments
+ */
 #define glog_warn(__f,...)		gshell_log_flash(GLOG_WARN,G_XSTR(__f), ##__VA_ARGS__)
+
+/**
+ * @brief Logging macro level ERROR
+ * 
+ * Basically \a gshell_log_flash but with a macro to store the (printf) text
+ * in the flash memory & passing the flash memory pointer to the function 
+ * \a gshell_log_flash.
+ * 
+ * @param logText	Logging text & printf-formatting 
+ * @param ...		Additional, optional printf-style arguments
+ */
 #define glog_error(__f,...)		gshell_log_flash(GLOG_ERROR,G_XSTR(__f), ##__VA_ARGS__)
+
+/**
+ * @brief Logging macro level FATAL
+ * 
+ * Basically \a gshell_log_flash but with a macro to store the (printf) text
+ * in the flash memory & passing the flash memory pointer to the function 
+ * \a gshell_log_flash.
+ * 
+ * @param logText	Logging text & printf-formatting 
+ * @param ...		Additional, optional printf-style arguments
+ */
 #define glog_fatal(__f,...)		gshell_log_flash(GLOG_FATAL,G_XSTR(__f), ##__VA_ARGS__)
 
 /**
  * @brief Logging file/function/line
  *
  * Prints the exact file, function and line via the logging function.
- * Expects a logging level.
+ * The text is automatically stored in flash / program memory.
+ * Expects a logging level as argument.
  *
- * @param __l	glog_level logging level
+ * @param __l		enum \a glog_level logging level
  */
-#define glog_ffl(__l)			gshell_log_flash(__l, G_XSTR("In ["__FILE__"], function [%s] line [%d]"), __FUNCTION__, __LINE__)
+#define glog_ffl(__l)			\
+	gshell_log_flash(__l, G_XSTR("In ["__FILE__"], function [%s] line [%d]"), __FUNCTION__, __LINE__)
 
 
 

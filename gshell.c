@@ -2,10 +2,10 @@
  * @file gshell.c
  * @brief gshell C file
  * @author gfcwfzkm
- * @version 2.0
+ * @version 2.2
  */
 
-#include "./gshell.h"
+#include "gshell.h"
 
 /* Strings used by the library are defined here */
 #define _G_UNKCMD	"Unknown command: "
@@ -392,6 +392,7 @@ int8_t gshell_init(void (*put_char)(char), uint32_t (*get_msTimeStamp)(void))
 
 	// Terminal turned on by default, prompt turned off by default
 	sInternals.isActive = 1;
+	sInternals.promtEnabled = 0;
 	
 #ifdef ENABLE_STATIC_COMMANDS
 	// Make sure not too many static commands have been added
@@ -568,7 +569,7 @@ uint16_t gshell_processShell(char c)
 	{
 		return GSHELL_OK;
 	}
-	else if (sInternals.isActive == 0)
+	else if ((sInternals.isActive == 0) || (sInternals.promtEnabled == 0))
 	{
 		// If the shell isn't even set active, avoid any further processing!
 		return GSHELL_INACTIVE;
