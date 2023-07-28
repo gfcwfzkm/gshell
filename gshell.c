@@ -154,7 +154,7 @@ static const gshell_cmd_t *_gshellFindCmd(const char *name, int8_t *pi8CmdID)
 		// and return it's ID and pointer when found
 		if (_G_STRNCMP(name, command->cmdName, G_RX_BUFSIZE) == 0)
 		{
-			*pu8CmdCnt += u8_cnt;
+			*pi8CmdCnt += u8_cnt;
 			return command;
 		}
 	}
@@ -427,7 +427,7 @@ int8_t gshell_register_cmd(gshell_cmd_t *cmd)
 	// Check if max. amount of commands already have been reached
 	uint8_t u8CheckCmdCnt = sInternals.chain_len;
 #ifdef ENABLE_STATIC_COMMANDS
-	u8CheckCmdCnd += gshell_list_num_commands;
+	u8CheckCmdCnt += gshell_list_num_commands;
 #endif
 	if (u8CheckCmdCnt >= _G_MAXCMD)
 	{
