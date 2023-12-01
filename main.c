@@ -9,8 +9,17 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <stdlib.h>		// Function 'strtol'
-#include <conio.h>		// Function 'getch'
 #include "gshell.h"
+
+/* We need an unbuffered input! For this case, conio's getch
+ * is used while ncurses' getchar does the job on linux. */
+#ifdef _WIN32
+	#include <conio.h>		// Function 'getch'
+	#define get_unbuffered	getch
+#else
+	#include <curses.h>
+	#define get_unbuffered	getchar
+#endif
 
 /* Each dynamic command is added from 1 upwards. Since the
  * way each command is added is defined, the IDs can be
@@ -83,9 +92,9 @@ int main()
 	while (u8AppRunning == 0)
 	{
 		// Calling gshell_processShell with the newest received character
-		// getch is used instead of getchar, since getchar tends to be buffered
-		// on windows until a newline is received.
-		u16CmdRetVal = gshell_processShell((char)getch());
+		// We need an unbuffered "getchar" function for this to work well on
+		// computers.
+		u16CmdRetVal = gshell_processShell((char)get_unbuffered());
 
 		// Checking if any command has returned a value
 		if (u16CmdRetVal & GSHELL_CMDRET)
